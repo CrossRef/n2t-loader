@@ -14,8 +14,8 @@ Get some XML from OAI-PMH. Then:
 $ lein repl
 
 (def n2t-password "the_xref_n2t_password")
-(def p (create-plumbing))
-(run-directory "/path/to/dir/with/oai-pmh/xml" p)
+(def bp (create-batch-plumbing))
+(run-directory "/path/to/dir/with/oai-pmh/xml" bp)
 ```
 
 Errors are reported in `fails.log`.
