@@ -10,10 +10,12 @@ the `_t` target property within n2t for identifiers prefixed with `doi:`.
 
 Get some XML from OAI-PMH. Then:
 
-> $ lein repl
->
-> (def n2t-password "the_xref_n2t_password")
-> (def p (create-plumbing))
-> (run-directory "/path/to/dir/with/oai-pmh/xml" p)
+```
+$ lein repl
+
+(def n2t-password "the_xref_n2t_password")
+(def p (create-plumbing))
+(run-directory "/path/to/dir/with/oai-pmh/xml" p)
+```
 
 Errors are reported in `fails.log`.
