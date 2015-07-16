@@ -24,6 +24,7 @@
 (def n2t-user "xref")
 (def n2t-password "")
 (def n2t-path "https://n2t-stg.n2t.net/a/")
+(def n2t-batch-size 10)
 
 (def n2t-target-attr "_t")
 (def n2t-title-attr "title")
@@ -38,6 +39,11 @@
        attr
        "%20"
        value))
+
+(def n2t-batch-path
+  (str n2t-path
+       n2t-binder
+       "/b?-"))
 
 (defn n2t-get-path [identifier attr]
   (str n2t-path
@@ -73,7 +79,7 @@
 
 (defn normalize-doi [doi]
   (->> doi
-       str/lower-case
+       str/upper-case
        (str "doi:")))
 
 (defn register-with-n2t [doi res-url]
@@ -111,6 +117,32 @@
                "exception"
                error))))
 
+;; Batch n2t action
+;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
+
+(defn ->set-target-line [doi res-url]
+  (str (normalize-doi doi) ".set _t " res-url))
+
+(defn ->set-target-batch-body [doi-res-url-vectors]
+  (->> doi-res-url-vectors
+       (map #(apply ->set-target-line %))
+       (str/join \newline)))
+
+(defn register-batch-with-n2t [doi-res-url-vectors]
+  (let [{:keys [status body error]}
+        @(hc/post n2t-batch-path
+                  {:basic-auth [n2t-user n2t-password]
+                   :insecure? true
+                   :body (->set-target-batch-body doi-res-url-vectors)})]
+    (when-not (= 200 status)
+      (str (str/join ", " (map first doi-res-url-vectors))
+           " status code "
+           status
+           " body "
+           body
+           " exception "
+           error))))
+
 ;; Plumbing
 ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
 
@@ -128,9 +160,27 @@
     (swap! count-atom inc)
     (recur (async/<! doi-chan))))
 
+(defn process-doi-batches [doi-batch-chan fail-chan count-atom]
+  (async/go-loop [doi-res-url-list (async/<! doi-batch-chan)]
+    (when-let [fail (register-batch-with-n2t doi-res-url-list)]
+      (async/>! fail-chan fail))
+    (swap! count-atom + (count doi-res-url-list))
+    (recur (async/<! doi-batch-chan))))
+
+(defn process-dois-in-batches [doi-list-atom doi-chan
+                               doi-batch-chan]
+  (async/go-loop [doi (async/<! doi-chan)]
+    (swap! doi-list-atom
+           #(if (zero? (mod (count %) n2t-batch-size))
+              (do
+                (async/>!! doi-batch-chan %)
+                [doi])
+              (conj % doi)))
+    (recur (async/<! doi-chan))))
+
 (defn process-fails [fail-chan fail-file]
   (async/go-loop [fail (async/<! fail-chan)]
-    (spit fail-file fail)
+    (spit fail-file (str fail \newline) :append true)
     (recur (async/<! fail-chan))))
 
 (defn create-plumbing []
@@ -141,6 +191,24 @@
            :doi-chan (async/chan (async/buffer 10000))}]
     (process-fails (:fail-chan p) (:fail-file p))
     (process-dois (:doi-chan p) (:fail-chan p) (:count p))
+    (process-files (:file-chan p) (:doi-chan p))
+    p))
+
+(defn create-batch-plumbing []
+  (let [p {:count (atom 0)
+           :doi-list (atom [])
+           :fail-file (io/file "fails.log")
+           :fail-chan (async/chan (async/buffer 10000))
+           :file-chan (async/chan (async/buffer 1000))
+           :doi-chan (async/chan (async/buffer 10000))
+           :doi-batch-chan (async/chan (async/buffer 100))}]
+    (process-fails (:fail-chan p) (:fail-file p))
+    (process-dois-in-batches (:doi-list p)
+                             (:doi-chan p)
+                             (:doi-batch-chan p))
+    (process-doi-batches (:doi-batch-chan p)
+                         (:fail-chan p)
+                         (:count p))
     (process-files (:file-chan p) (:doi-chan p))
     p))
 
