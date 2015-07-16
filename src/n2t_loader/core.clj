@@ -24,7 +24,7 @@
 (def n2t-user "xref")
 (def n2t-password "")
 (def n2t-path "https://n2t-stg.n2t.net/a/")
-(def n2t-batch-size 10)
+(def n2t-batch-size 1000)
 
 (def n2t-target-attr "_t")
 (def n2t-title-attr "title")
