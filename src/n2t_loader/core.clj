@@ -149,8 +149,11 @@
 (defn process-files [file-chan doi-chan]
   (dotimes [_ 5]
     (async/go-loop [f (async/<! file-chan)]
-      (doseq [doi (xml-file->dois f)]
-        (async/>! doi-chan doi))
+      (try
+        (doseq [doi (xml-file->dois f)]
+          (async/>! doi-chan doi))
+        (catch Throwable t
+          (println f t)))
       (recur (async/<! file-chan)))))
 
 (defn process-dois [doi-chan fail-chan count-atom]
