@@ -29,6 +29,8 @@
 (def n2t-target-attr "_t")
 (def n2t-title-attr "title")
 
+(def cr-data-proxy "http://data.crossref.org")
+
 (defn n2t-set-path [identifier attr value]
   (str n2t-path
        n2t-binder
@@ -123,9 +125,21 @@
 (defn ->set-target-line [doi res-url]
   (str (normalize-doi doi) ".set _t " res-url))
 
+(defn ->set-data-target-line [doi content-type data-url]
+  (str (normalize-doi doi) ".set _mTm." content-type " " data-url))
+
+(defn ->set-cr-data-default-line [doi]
+  (->set-data-target-line doi
+                          "default"
+                          (str cr-data-proxy "/" doi)))
+
 (defn ->set-target-batch-body [doi-res-url-vectors]
   (->> doi-res-url-vectors
-       (map #(apply ->set-target-line %))
+       (map
+        #(str
+          (apply ->set-target-line %)
+          "\n"
+          (-> % first ->set-cr-data-default-line)))
        (str/join \newline)))
 
 (defn register-batch-with-n2t [doi-res-url-vectors]
