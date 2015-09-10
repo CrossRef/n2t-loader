@@ -27,7 +27,12 @@
 (def n2t-batch-size 1000)
 
 (def n2t-target-attr "_t")
+(def n2t-data-target-attr "_mTm.")
+(def n2t-data-default-type "") ; empty str on purpose
 (def n2t-title-attr "title")
+
+(def n2t-identifier-reserved-regex #"[\|;\(\)\[\]=:]")
+(def n2t-identifier-reserved #{\| \; \( \) \[ \] \= \: \^})
 
 (def cr-data-proxy "http://data.crossref.org")
 
@@ -55,6 +60,24 @@
        ".fetch"
        "%20"
        attr))
+
+(defn escape-identifier? [identifier]
+  (not (nil?
+        (or (re-find n2t-identifier-reserved-regex identifier)
+            (re-find #"\A<" identifier)))))
+
+(defn escape-identifier [identifier]
+  (apply
+   str
+   (map
+    #(if-not (some #{%} n2t-identifier-reserved)
+       %
+       (str "^" (Integer/toHexString (int (.charValue %)))))
+    identifier)))
+  
+  ;; any reserved chars?
+  ;; identifier begins with < ? (no)
+  ;; if encoded, need :hx and to also encode original ^
 
 ;; Processing actions
 ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
@@ -122,15 +145,21 @@
 ;; Batch n2t action
 ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
 
+(defn with-hex [s] (str ":hx " s))
+
 (defn ->set-target-line [doi res-url]
-  (str (normalize-doi doi) ".set _t " res-url))
+  (with-hex
+    (str (-> doi normalize-doi escape-identifier)
+         ".set " n2t-target-attr " " res-url)))
 
 (defn ->set-data-target-line [doi content-type data-url]
-  (str (normalize-doi doi) ".set _mTm." content-type " " data-url))
+  (with-hex
+    (str (-> doi normalize-doi escape-identifier)
+         ".set " n2t-data-target-attr  content-type " " data-url)))
 
 (defn ->set-cr-data-default-line [doi]
   (->set-data-target-line doi
-                          "default"
+                          n2t-data-default-type
                           (str cr-data-proxy "/" doi)))
 
 (defn ->set-target-batch-body [doi-res-url-vectors]
